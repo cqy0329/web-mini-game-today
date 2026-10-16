@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>10秒連點大賽 (VS AI)</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Canvas Confetti CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <!-- Google Fonts & FontAwesome Icons -->
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <style>
+    body {
+      font-family: 'Fredoka', sans-serif, system-ui;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+    
+    @keyframes pulse-fast {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+    
+    .animate-pulse-fast {
+      animation: pulse-fast 0.3s infinite;
+    }
+
+    /* 遊戲點擊波紋效果 */
+    .click-ripple {
+      position: absolute;
+      border-radius: 50%;
+      transform: scale(0);
+      animation: ripple 0.4s linear;
+      background-color: rgba(255, 255, 255, 0.6);
+      pointer-events: none;
+    }
+
+    @keyframes ripple {
+      to {
+        transform: scale(2.5);
+        opacity: 0;
+      }
+    }
+
+    /* 浮動數字特效 (+1) */
+    .floating-text {
+      position: absolute;
+      font-weight: bold;
+      color: #fbbf24;
+      font-size: 1.5rem;
+      pointer-events: none;
+      animation: floatUp 0.6s ease-out forwards;
+      text-shadow: 0px 2px 4px rgba(0,0,0,0.5);
+    }
+
+    @keyframes floatUp {
+      0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+      100% {
+        opacity: 0;
+        transform: translateY(-40px) scale(1.3);
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center justify-center p-4">
+
+  <!-- 遊戲主容器 -->
+  <div class="w-full max-w-lg bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 p-6 flex flex-col items-center relative overflow-hidden">
+    
+    <!-- 頂部標題區 -->
+    <div class="text-center mb-4">
+      <h1 class="text-3xl sm:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-red-500 tracking-wide">
+        ⚡ 10秒連點大賽
+      </h1>
+      <p class="text-slate-400 text-sm mt-1">挑戰 AI 的極速手速！AI 速度約 5 次/秒 (目標 ~50下)</p>
+    </div>
+
+    <!-- 倒數計時器 -->
+    <div class="w-full bg-slate-900/80 rounded-2xl p-4 mb-5 border border-slate-700 text-center relative">
+      <span class="text-slate-400 text-xs font-semibold uppercase tracking-wider block mb-1">剩餘時間</span>
+      <div id="timerDisplay" class="text-5xl font-black text-amber-400 font-mono tracking-tight">10.0s</div>
+    </div>
+
+    <!-- 比賽進度條區域 -->
+    <div class="w-full space-y-4 mb-6">
+      <!-- 玩家進度條 -->
+      <div class="bg-slate-900/60 p-3.5 rounded-2xl border border-indigo-900/50">
+        <div class="flex justify-between items-center mb-1.5">
+          <span class="font-bold text-indigo-400 flex items-center gap-2">
+            <i class="fa-solid fa-user-ninja">
+            </i> 玩家 (你)
+          </span>
+          <div class="text-right">
+            <span id="playerCount" class="text-2xl font-black text-white">0</span>
+            <span class="text-xs text-slate-400 ml-1">次</span>
+            <span id="playerCps" class="text-xs font-semibold text-indigo-300 ml-2">(0 CPS)</span>
+          </div>
+        </div>
+        <div class="w-full bg-slate-700/60 h-4 rounded-full overflow-hidden p-0.5">
+          <div id="playerProgressBar" class="bg-gradient-to-r from-indigo-500 to-cyan-400 h-full rounded-full transition-all duration-100 w-0"></div>
+        </div>
+      </div>
+
+      <!-- AI 進度條 -->
+      <div class="bg-slate-900/60 p-3.5 rounded-2xl border border-rose-900/50">
+        <div class="flex justify-between items-center mb-1.5">
+          <span class="font-bold text-rose-400 flex items-center gap-2">
+            <i class="fa-solid fa-robot"></i> 電腦 AI
+          </span>
+          <div class="text-right">
+            <span id="aiCount" class="text-2xl font-black text-white">0</span>
+            <span class="text-xs text-slate-400 ml-1">次</span>
+            <span id="aiCps" class="text-xs font-semibold text-rose-300 ml-2">(0 CPS)</span>
+          </div>
+        </div>
+        <div class="w-full bg-slate-700/60 h-4 rounded-full overflow-hidden p-0.5">
+          <div id="aiProgressBar" class="bg-gradient-to-r from-rose-500 to-orange-400 h-full rounded-full transition-all duration-100 w-0"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 點擊互動區域 -->
+    <div class="w-full flex-1 flex flex-col items-center justify-center relative min-h-[180px]">
+      
+      <!-- 遊戲準備階段/預備提示 -->
+      <div id="startOverlay" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-800/90 rounded-2xl backdrop-blur-sm p-4 text-center">
+        <i class="fa-solid fa-gamepad text-5xl text-amber-400 mb-3 animate-bounce"></i>
+        <p class="text-lg font-bold mb-4 text-slate-200">準備好挑戰你的最高手速了嗎？</p>
+        <button id="startBtn" onclick="startGame()" class="px-8 py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xl rounded-2xl shadow-lg shadow-orange-500/30 transform active:scale-95 transition-all cursor-pointer">
+          <i class="fa-solid fa-play mr-2"></i> 開始比賽！
+        </button>
+      </div>
+
+      <!-- 大型連點按鈕 -->
+      <button id="clickArea" onclick="handlePlayerClick(event)" disabled class="w-full h-44 bg-gradient-to-b from-indigo-600 to-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-3xl border-4 border-indigo-400/30 shadow-xl flex flex-col items-center justify-center transition-transform active:scale-95 relative overflow-hidden cursor-pointer select-none">
+        <i class="fa-solid fa-hand-pointer text-5xl mb-2 text-indigo-200 pointer-events-none"></i>
+        <span class="text-2xl font-black tracking-wider text-white pointer-events-none">快速瘋狂點擊！</span>
+        <span class="text-xs text-indigo-200 mt-1 opacity-80 pointer-events-none">連續瘋狂按壓這個區域</span>
+      </button>
+    </div>
+
+    <!-- 結算彈窗 Modal -->
+    <div id="resultModal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center shadow-2xl transform transition-all scale-100">
+        
+        <!-- 勝負圖示 -->
+        <div id="resultIcon" class="text-6xl mb-3">🏆</div>
+        
+        <!-- 勝負主標題 -->
+        <h2 id="resultTitle" class="text-3xl font-extrabold mb-1">比賽結束！</h2>
+        
+        <!-- 詳細比分差別說明 -->
+        <p id="resultDifference" class="text-xl font-bold text-amber-400 mb-4">你贏了 AI 25 下點擊！</p>
+        
+        <!-- 詳細統計列表 -->
+        <div class="bg-slate-900/80 rounded-2xl p-4 mb-6 text-left space-y-2 text-sm border border-slate-700/60">
+          <div class="flex justify-between items-center">
+            <span class="text-slate-400">你的總點擊次數：</span>
+            <span id="modalPlayerTotal" class="font-bold text-indigo-400 text-base">0 下</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-slate-400">AI 總點擊次數：</span>
+            <span id="modalAiTotal" class="font-bold text-rose-400 text-base">0 下</span>
+          </div>
+          <div class="flex justify-between items-center border-t border-slate-800 pt-2">
+            <span class="text-slate-400">你的平均速度：</span>
+            <span id="modalAvgCps" class="font-bold text-amber-300 text-base">0 CPS</span>
+          </div>
+        </div>
+
+        <!-- 按鈕群 -->
+        <button onclick="restartGame()" class="w-full py-3.5 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-black text-lg rounded-xl shadow-lg transition-all transform active:scale-95 cursor-pointer flex items-center justify-center gap-2">
+          <i class="fa-solid fa-rotate-right"></i> 再挑戰一次
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // 遊戲參數配置
+    const GAME_DURATION = 10; // 10 秒
+    const TARGET_MAX_ESTIMATE = 70; // 進度條滿格估算預設上限 (會隨點擊動態增加)
+
+    // 狀態變數
+    let playerClicks = 0;
+    let aiClicks = 0;
+    let timeRemaining = GAME_DURATION;
+    let isPlaying = false;
+    let gameTimer = null;
+    let aiTimer = null;
+    let cpsUpdateTimer = null;
+
+    let playerClickHistory = []; // 用於計算實時 CPS
+
+    // DOM 元素引用
+    const timerDisplay = document.getElementById('timerDisplay');
+    const playerCountEl = document.getElementById('playerCount');
+    const aiCountEl = document.getElementById('aiCount');
+    const playerCpsEl = document.getElementById('playerCps');
+    const aiCpsEl = document.getElementById('aiCps');
+    const playerProgressBar = document.getElementById('playerProgressBar');
+    const aiProgressBar = document.getElementById('aiProgressBar');
+    const clickArea = document.getElementById('clickArea');
+    const startOverlay = document.getElementById('startOverlay');
+    const resultModal = document.getElementById('resultModal');
+
+    // 結算 Modal 元素
+    const resultIcon = document.getElementById('resultIcon');
+    const resultTitle = document.getElementById('resultTitle');
+    const resultDifference = document.getElementById('resultDifference');
+    const modalPlayerTotal = document.getElementById('modalPlayerTotal');
+    const modalAiTotal = document.getElementById('modalAiTotal');
+    const modalAvgCps = document.getElementById('modalAvgCps');
+
+    // 開始遊戲
+    function startGame() {
+      // 重置狀態
+      playerClicks = 0;
+      aiClicks = 0;
+      timeRemaining = GAME_DURATION;
+      playerClickHistory = [];
+      isPlaying = true;
+
+      // 更新介面
+      updateUI();
+      timerDisplay.textContent = timeRemaining.toFixed(1) + 's';
+      timerDisplay.classList.remove('text-red-500', 'animate-pulse-fast');
+      timerDisplay.classList.add('text-amber-400');
+
+      startOverlay.classList.add('hidden');
+      clickArea.disabled = false;
+      resultModal.classList.add('hidden');
+
+      // 主倒數計時器 (每 100ms 更新一次)
+      const startTime = Date.now();
+      gameTimer = setInterval(() => {
+        const elapsed = (Date.now() - startTime) / 1000;
+        timeRemaining = Math.max(0, GAME_DURATION - elapsed);
+        
+        timerDisplay.textContent = timeRemaining.toFixed(1) + 's';
+
+        // 倒數 5 秒警示音視覺效果
+        if (timeRemaining <= 5 && timeRemaining > 0) {
+          timerDisplay.classList.remove('text-amber-400');
+          timerDisplay.classList.add('text-red-500', 'animate-pulse-fast');
+        }
+
+        if (timeRemaining <= 0) {
+          endGame();
+        }
+      }, 100);
+
+      // AI 點擊模擬邏輯 (AI 每秒鐘點擊約 5 下，即平均 200ms 點一下)
+      // 加上些許自然隨機波動 (160ms ~ 240ms)
+      scheduleAiClick();
+
+      // 每 200ms 更新實時 CPS
+      cpsUpdateTimer = setInterval(updateCps, 200);
+    }
+
+    // AI 點擊排程器
+    function scheduleAiClick() {
+      if (!isPlaying) return;
+
+      // 平均 200ms，隨機加入 ±40ms 波動，讓 AI 表現更自然
+      const delay = 200 + (Math.random() * 80 - 40);
+
+      aiTimer = setTimeout(() => {
+        if (isPlaying) {
+          aiClicks++;
+          updateUI();
+          scheduleAiClick();
+        }
+      }, delay);
+    }
+
+    // 處理玩家點擊事件
+    function handlePlayerClick(e) {
+      if (!isPlaying) return;
+
+      playerClicks++;
+      const now = Date.now();
+      playerClickHistory.push(now);
+
+      // 產生特效 (+1 浮動文字與波紋)
+      createClickEffects(e);
+
+      updateUI();
+    }
+
+    // 創建點擊波紋與 +1 動畫
+    function createClickEffects(e) {
+      const rect = clickArea.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // 1. +1 浮動文字
+      const text = document.createElement('div');
+      text.className = 'floating-text';
+      text.textContent = '+1';
+      text.style.left = `${x - 10}px`;
+      text.style.top = `${y - 20}px`;
+      clickArea.appendChild(text);
+
+      setTimeout(() => text.remove(), 600);
+
+      // 2. 水波紋效果
+      const ripple = document.createElement('span');
+      ripple.className = 'click-ripple';
+      const size = Math.max(rect.width, rect.height) * 0.4;
+      ripple.style.width = ripple.style.height = `${size}px`;
+      ripple.style.left = `${x - size / 2}px`;
+      ripple.style.top = `${y - size / 2}px`;
+      clickArea.appendChild(ripple);
+
+      setTimeout(() => ripple.remove(), 400);
+    }
+
+    // 計算實時 CPS (每秒點擊數)
+    function updateCps() {
+      const now = Date.now();
+      // 僅計算過去 1 秒內的點擊
+      playerClickHistory = playerClickHistory.filter(t => now - t <= 1000);
+      const playerCps = playerClickHistory.length;
+      playerCpsEl.textContent = `(${playerCps} CPS)`;
+
+      // 計算 AI 的大約當前 CPS (預設 5)
+      const currentElapsed = GAME_DURATION - timeRemaining;
+      const aiCps = currentElapsed > 0 ? (aiClicks / currentElapsed).toFixed(1) : "0.0";
+      aiCpsEl.textContent = `(~${aiCps} CPS)`;
+    }
+
+    // 更新數據與進度條 UI
+    function updateUI() {
+      playerCountEl.textContent = playerClicks;
+      aiCountEl.textContent = aiClicks;
+
+      // 動態估算當前最高分來決定進度條長度，讓進度條伸縮流暢
+      const maxScore = Math.max(TARGET_MAX_ESTIMATE, playerClicks, aiClicks);
+
+      const playerPercent = Math.min(100, (playerClicks / maxScore) * 100);
+      const aiPercent = Math.min(100, (aiClicks / maxScore) * 100);
+
+      playerProgressBar.style.width = `${playerPercent}%`;
+      aiProgressBar.style.width = `${aiPercent}%`;
+    }
+
+    // 遊戲結束結算
+    function endGame() {
+      isPlaying = false;
+      clearInterval(gameTimer);
+      clearTimeout(aiTimer);
+      clearInterval(cpsUpdateTimer);
+
+      clickArea.disabled = true;
+
+      const diff = playerClicks - aiClicks;
+      const avgCps = (playerClicks / GAME_DURATION).toFixed(1);
+
+      modalPlayerTotal.textContent = `${playerClicks} 下`;
+      modalAiTotal.textContent = `${aiClicks} 下`;
+      modalAvgCps.textContent = `${avgCps} CPS`;
+
+      if (diff > 0) {
+        // 玩家獲勝
+        resultIcon.textContent = '🏆';
+        resultTitle.textContent = '祝賀！你贏了！';
+        resultTitle.className = 'text-3xl font-extrabold mb-1 text-emerald-400';
+        resultDifference.textContent = `你領先 AI ${diff} 下點擊！`;
+        resultDifference.className = 'text-xl font-bold text-emerald-400 mb-4';
+
+        // 慶祝彩帶特效
+        confetti({
+          particleCount: 120,
+          spread: 80,
+          origin: { y: 0.6 }
+        });
+      } else if (diff < 0) {
+        // 玩家落敗
+        resultIcon.textContent = '🤖';
+        resultTitle.textContent = '可惜！AI 獲勝了';
+        resultTitle.className = 'text-3xl font-extrabold mb-1 text-rose-400';
+        resultDifference.textContent = `你落後 AI ${Math.abs(diff)} 下點擊！`;
+        resultDifference.className = 'text-xl font-bold text-rose-400 mb-4';
+      } else {
+        // 平手
+        resultIcon.textContent = '🤝';
+        resultTitle.textContent = '勢均力敵！平手！';
+        resultTitle.className = 'text-3xl font-extrabold mb-1 text-amber-400';
+        resultDifference.textContent = `雙方點擊次數完全相同 (${playerClicks} 下)`;
+        resultDifference.className = 'text-xl font-bold text-amber-400 mb-4';
+      }
+
+      // 顯示結算視窗
+      resultModal.classList.remove('hidden');
+    }
+
+    // 重新開始遊戲
+    function restartGame() {
+      resultModal.classList.add('hidden');
+      startGame();
+    }
+  </script>
+</body>
+</html>
